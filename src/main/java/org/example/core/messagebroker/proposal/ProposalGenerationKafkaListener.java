@@ -1,47 +1,49 @@
 package org.example.core.messagebroker.proposal;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
 import org.example.core.api.dto.AgreementDTO;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class ProposalGenerationKafkaListener {
-
-    private static final Logger logger = LoggerFactory.getLogger(ProposalGenerationKafkaListener.class);
 
     private final int totalRetryCount;
     private final JsonStringToAgreementDtoConverter agreementDtoConverter;
     private final ProposalGenerator proposalGenerator;
     private final KafkaTemplate<String, String> kafkaTemplate;
 
-    private static final String TOPIC_PROPOSAL_GENERATION = "proposal-generation";
-    private static final String TOPIC_PROPOSAL_GENERATION_DLQ = "proposal-generation-dlq";
+    private final String topicProposalGeneration;
+    private final String topicProposalGenerationDlq;
 
     public ProposalGenerationKafkaListener(
             @Value("${kafka.total.retry.count}") int totalRetryCount,
+            @Value("${kafka.topic.proposal-generation}") String topicProposalGeneration,
+            @Value("${kafka.topic.proposal-generation-dlq}") String topicProposalGenerationDlq,
             JsonStringToAgreementDtoConverter agreementDtoConverter,
             ProposalGenerator proposalGenerator,
             KafkaTemplate<String, String> kafkaTemplate) {
         this.totalRetryCount = totalRetryCount;
+        this.topicProposalGeneration = topicProposalGeneration;
+        this.topicProposalGenerationDlq = topicProposalGenerationDlq;
         this.agreementDtoConverter = agreementDtoConverter;
         this.proposalGenerator = proposalGenerator;
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    @KafkaListener(topics = TOPIC_PROPOSAL_GENERATION, groupId = "proposal-group")
+    @KafkaListener(topics = "#{__listener.topicProposalGeneration}", groupId = "proposal-group")
     public void receiveMessage(ConsumerRecord<String, String> record) {
         try {
             processMessage(record.value());
         } catch (Exception e) {
-            logger.error("FAIL to process message: ", e);
+            log.error("FAIL to process message: ", e);
             retryOrForwardToDeadLetterTopic(record);
         }
     }
@@ -55,12 +57,11 @@ public class ProposalGenerationKafkaListener {
             retryCount = Integer.parseInt(new String(retryHeader.value()));
         }
         retryCount++;
-        logger.info("Message retry count = {}", retryCount);
+        log.info("Message retry count = {}", retryCount);
 
         if (retryCount <= totalRetryCount) {
-
             ProducerRecord<String, String> producerRecord = new ProducerRecord<>(
-                    TOPIC_PROPOSAL_GENERATION,
+                    topicProposalGeneration,
                     null,
                     record.key(),
                     record.value()
@@ -70,17 +71,16 @@ public class ProposalGenerationKafkaListener {
             producerRecord.headers().add("x-retry-count", Integer.toString(retryCount).getBytes());
 
             kafkaTemplate.send(producerRecord);
-            logger.info("Message sent back to topic {} for retry", TOPIC_PROPOSAL_GENERATION);
+            log.info("Message sent back to topic {} for retry", topicProposalGeneration);
         } else {
-            kafkaTemplate.send(TOPIC_PROPOSAL_GENERATION_DLQ, record.key(), record.value());
-            logger.info("Message sent to DLQ topic {}", TOPIC_PROPOSAL_GENERATION_DLQ);
+            kafkaTemplate.send(topicProposalGenerationDlq, record.key(), record.value());
+            log.info("Message sent to DLQ topic {}", topicProposalGenerationDlq);
         }
     }
 
     private void processMessage(String messageBody) throws Exception {
-        logger.info("Processing message: {}", messageBody);
+        log.info("Processing message: {}", messageBody);
         AgreementDTO agreementDTO = agreementDtoConverter.convert(messageBody);
         proposalGenerator.generateProposalAndStoreToFile(agreementDTO);
     }
-
 }

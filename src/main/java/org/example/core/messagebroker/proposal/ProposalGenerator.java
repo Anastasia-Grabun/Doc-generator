@@ -1,5 +1,6 @@
 package org.example.core.messagebroker.proposal;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -7,16 +8,13 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.example.core.api.dto.AgreementDTO;
 import org.example.core.api.dto.PersonDTO;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.io.IOException;
 
+@Slf4j
 @Component
 class ProposalGenerator {
-
-    private static final Logger logger = LoggerFactory.getLogger(ProposalGenerator.class);
 
     @Value( "${proposals.directory.path}" )
     private String proposalsDirectoryPath;
@@ -26,7 +24,7 @@ class ProposalGenerator {
 
 
     public void generateProposalAndStoreToFile(AgreementDTO agreementDTO) throws IOException {
-        logger.info("Start to generate PDF for proposal: " + agreementDTO.getUuid());
+        log.info("Start to generate PDF for proposal: " + agreementDTO.getUuid());
 
         try {
             OffsetContext offsetContext = new OffsetContext(50, 700);
@@ -67,10 +65,10 @@ class ProposalGenerator {
             document.save(proposalsDirectoryPath + "/" + buildFileName(agreementDTO));
             document.close();
         } catch (IOException e) {
-            logger.error("Proposal generation error!", e);
+            log.error("Proposal generation error!", e);
             throw new RuntimeException(e);
         }
-        logger.info("Finish to generate PDF for proposal: " + agreementDTO.getUuid());
+        log.info("Finish to generate PDF for proposal: " + agreementDTO.getUuid());
     }
 
     private String buildFileName(AgreementDTO agreementDTO) {
